@@ -49,7 +49,7 @@ replay_pid*
 
 ## Robovm
 /ios/robovm-build/
-
+/test-env
 ## GWT
 /html/war/
 /html/gwt-unitCache/
