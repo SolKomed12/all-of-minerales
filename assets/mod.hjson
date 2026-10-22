@@ -8,10 +8,10 @@ name: "all-of-minerales"
 author: "SolKomed"
 
 #the fully qualified main class of the mod
-main: "all.of.minerales.AllOfMinerales"
+main: "all.of.minerals.AllOfMinerals"
 
 #the mod description as seen in the mod dialog
-description: "New minerals"
+description: "New minerales"
 
 #the mod version
 version: 0.0.1
