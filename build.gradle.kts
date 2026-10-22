@@ -6,11 +6,7 @@ sourceSets.main {
     java.setSrcDirs(listOf("src"))
 }
 
-// Mindustry version to depend on.
-// Valid values:
-// - latest: depend on the latest release of mindustry
-// - be: depend on the very latest commit of mindustry
-// - v<number>: depend on a specific version
+// Версия Mindustry для разработки и тестов
 val mindustryVersion = "v160"
 val isWindows = System.getProperty("os.name").lowercase().contains("windows")
 val sdkRoot: String? = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
@@ -23,14 +19,14 @@ val nameAllBuild = ""
 repositories {
     mavenCentral()
 
-    //Downloads the dependencies JAR file from Mindustry releases; does not use any real repository. Surprisingly, this is the most reliable option.
+    // Репозиторий Анукена
     ivy {
-        url = uri("https://github.com/")
+        url = uri("https://github.com")
         patternLayout {
             val pattern = when(mindustryVersion) {
-                "latest" -> "/[organisation]/[module]/releases/[revision]/download/dependencies.jar" //latest stable release
-                "be" -> "/[organisation]/[module]/releases/download/master/[revision].jar" //latest commit (BE)
-                else -> "/[organisation]/[module]/releases/download/[revision]/dependencies.jar" //specific release
+                "latest" -> "/[organisation]/[module]/releases/[revision]/download/dependencies.jar"
+                "be" -> "/[organisation]/[module]/releases/download/master/[revision].jar"
+                else -> "/[organisation]/[module]/releases/download/[revision]/[classifier].jar"
             }
             val path = pattern.substring(0, pattern.lastIndexOf('/'))
 
@@ -41,7 +37,6 @@ repositories {
 
         content{
             if (mindustryVersion == "be") {
-                //BE artifact version is always 'latest'
                 includeVersion("Anuken", "MindustryBuilds", "latest")
             } else {
                 includeVersion("Anuken", "Mindustry", mindustryVersion)
@@ -56,7 +51,13 @@ java {
 }
 
 dependencies {
-    compileOnly(if(mindustryVersion == "be") "Anuken:MindustryBuilds:latest" else "Anuken:Mindustry:$mindustryVersion")
+    compileOnly("Anuken:Mindustry:$mindustryVersion:dependencies")
+}
+
+val testGameConfig by configurations.creating
+
+dependencies {
+    testGameConfig("Anuken:Mindustry:$mindustryVersion:Mindustry")
 }
 
 tasks.jar {
@@ -85,7 +86,6 @@ val jarAndroid = tasks.register("jarAndroid") {
             ?.firstOrNull { File(it, "android.jar").exists() }
             ?: throw GradleException("No android.jar found. Ensure that you have an Android platform installed.")
 
-        //collect dependencies needed for desugaring
         val classpath = (configurations.compileClasspath.get().files +
                 configurations.runtimeClasspath.get().files +
                 File(platformRoot, "android.jar"))
@@ -100,7 +100,6 @@ val jarAndroid = tasks.register("jarAndroid") {
             add("${projectName}$nameDesktopBuild.jar")
         }
 
-        //dex and desugar files - this requires d8 in your PATH
         val exitCode = ProcessBuilder(command)
             .directory(layout.buildDirectory.dir("libs").get().asFile)
             .inheritIO()
@@ -126,4 +125,33 @@ tasks.register<Jar>("deploy"){
     doLast{
         libs.get().file("${projectName}$nameAndroidBuild.jar").asFile.delete()
     }
+}
+// Копируем полноценный скачанный клиент игры в нашу папку песочницы
+val setupTestClient = tasks.register<Copy>("setupTestClient") {
+    from(testGameConfig)
+    into(file("test-env"))
+    rename { "Mindustry.jar" }
+
+    doLast {
+        println("[$projectName] Полноценный клиент игры успешно загружен в тестовое окружение!")
+    }
+}
+
+val deployToTest = tasks.register<Copy>("deployToTest") {
+    dependsOn(tasks.jar, setupTestClient)
+    from(layout.buildDirectory.dir("libs").get().file("${projectName}$nameDesktopBuild.jar"))
+
+    // Подстраиваемся под хитрый путь Миндустрии на Linux
+    into(file("test-env/.local/share/Mindustry/mods"))
+}
+
+tasks.register<JavaExec>("runClient") {
+    dependsOn(deployToTest)
+
+    mainClass.set("-jar")
+    args(file("test-env/Mindustry.jar").absolutePath, "--dev")
+
+    systemProperty("user.home", file("test-env").absolutePath)
+    jvmArgs("-XX:+AlwaysPreTouch")
+    workingDir = file("test-env")
 }
