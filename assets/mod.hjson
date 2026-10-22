@@ -1,8 +1,8 @@
 #the mod name as displayed in-game
-displayName: "All of Minerales"
+displayName: "All of Minerals"
 
 #the internal name of your mod
-name: "all-of-minerales"
+name: "all-of-minerals"
 
 #your name
 author: "SolKomed"
@@ -11,7 +11,7 @@ author: "SolKomed"
 main: "all.of.minerals.AllOfMinerals"
 
 #the mod description as seen in the mod dialog
-description: "New minerales"
+description: "New minerals"
 
 #the mod version
 version: 0.0.1

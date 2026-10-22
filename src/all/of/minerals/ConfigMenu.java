@@ -1,89 +1,100 @@
 package all.of.minerals;
 
+import all.of.minerals.api.Bundle;
+import all.of.minerals.api.BundleManager;
 import arc.scene.Element;
 import arc.scene.Group;
 import arc.scene.ui.Button;
 import arc.scene.ui.ImageButton;
 import arc.scene.ui.Label;
 import arc.scene.ui.layout.Table;
+import arc.util.Log;
 import mindustry.Vars;
 import mindustry.gen.Icon;
-import mindustry.mod.Mods.LoadedMod;
 import mindustry.ui.Styles;
 import mindustry.ui.dialogs.BaseDialog;
 
 public class ConfigMenu {
+    private final static Bundle bundle = BundleManager.getBundle("all-of-minerals");
 
     /**
-     * Перехватывает открытие вкладки модов и ищет плашку по точному displayName нашего мода.
+     * Перехватывает открытие вкладки модов и запускает поиск плашки.
      * Вызывается один раз при инициализации мода.
      */
     public static void hookModsMenu() {
         if (Vars.ui == null || Vars.ui.mods == null) return;
 
-        // Получаем метаданные мода напрямую через его класс, чтобы узнать точное имя в UI
-        LoadedMod mod = Vars.mods.getMod(AllOfMinerals.class);
-        if (mod == null) return;
+        try {
+            var loadedMod = Vars.mods.getMod(AllOfMinerals.class);
+            if (loadedMod == null) return;
 
-        final String modName = mod.meta.displayName;
+            final String targetName = loadedMod.meta.displayName != null ?
+                    loadedMod.meta.displayName.toLowerCase().trim() : "all of minerals";
 
-        // Караулим открытие меню модов для вставки кнопки настроек
-        Vars.ui.mods.shown(() -> {
-            Table mainTable = Vars.ui.mods.cont;
-            if (mainTable == null) return;
-
-            mainTable.update(() -> injectSettingsButton(mainTable, modName));
-        });
+            Vars.ui.mods.shown(() -> {
+                Vars.ui.mods.update(() -> {
+                    scanAndInject(Vars.ui.mods, targetName);
+                });
+            });
+        } catch (Exception e) {
+            Log.err("[AllOfMinerals] Ошибка при установке хука меню модов", e);
+        }
     }
 
     /**
-     * Сканирует интерфейс, ориентируясь на точное имя мода, полученное из его метаданных.
+     * Рекурсивно сканирует UI, находит плашку мода и аккуратно встраивает шестерёнку в правую таблицу.
      */
-    private static void injectSettingsButton(Element element, String modName) {
+    private static void scanAndInject(Element element, String targetName) {
         if (element == null) return;
 
-        // Ищем текстовую метку, которая один в один совпадает с именем нашего мода
         if (element instanceof Label label && label.getText() != null) {
-            if (modName.equals(label.getText().toString())) {
+            String currentLabelText = label.getText().toString().toLowerCase().trim();
+
+            if (currentLabelText.contains(targetName)) {
                 Group current = label.parent;
 
-                // Поднимаемся до главного контейнера плашки мода
+                // Поднимаемся строго до корневой кнопки плашки мода
                 while (current != null && !(current instanceof Button)) {
                     current = current.parent;
                 }
 
                 if (current instanceof Button modButton) {
-                    Table rightButtonsTable = findRightButtonsTable(modButton);
-                    if (rightButtonsTable != null) {
-                        if (rightButtonsTable.find("minerales-settings-btn") != null) return;
+                    // Возвращаем ванильный способ: берем самую правую финальную таблицу плашки
+                    Table rightTable = findRightButtonsTable(modButton);
+                    if (rightTable != null) {
+                        // Защита от дублирования
+                        if (rightTable.find("minerals-settings-btn") != null) return;
 
-                        // Создаем кнопку-шестерёнку
+                        // Создаем кнопку-шестерёнку ровно в старом стиле
                         ImageButton settingsBtn = new ImageButton(Icon.settings, Styles.clearNonei);
-                        settingsBtn.name = "minerales-settings-btn";
+                        settingsBtn.name = "minerals-settings-btn";
                         settingsBtn.changed(ConfigMenu::showConfigMenu);
 
-                        // Аккуратно встраиваем её в правый угол
-                        rightButtonsTable.add(settingsBtn).size(50f).right().padRight(1.5f);
+                        // Добавляем в правую таблицу с ванильными отступами
+                        rightTable.add(settingsBtn).size(50f).right().padRight(1.5f);
 
-                        // Сдвигаем крестик удаления в самый край
-                        int lastIndex = rightButtonsTable.getChildren().size - 1;
-                        Element removed = rightButtonsTable.getChildren().remove(lastIndex);
-                        rightButtonsTable.getChildren().insert(rightButtonsTable.getChildren().size, removed);
+                        // Сдвигаем крестик удаления в самый край, как это было изначально
+                        int lastIndex = rightTable.getChildren().size - 1;
+                        Element removed = rightTable.getChildren().remove(lastIndex);
+                        rightTable.getChildren().insert(rightTable.getChildren().size, removed);
 
-                        rightButtonsTable.invalidateHierarchy();
+                        rightTable.invalidateHierarchy();
                     }
                 }
             }
         }
 
-        // Рекурсивно спускаемся глубже по элементам UI
         if (element instanceof Group group) {
-            for (int i = 0; i < group.getChildren().size; i++) {
-                injectSettingsButton(group.getChildren().get(i), modName);
+            var children = group.getChildren();
+            for (int i = 0; i < children.size; i++) {
+                scanAndInject(children.get(i), targetName);
             }
         }
     }
 
+    /**
+     * Возвращает оригинальный поиск правой таблицы кнопок плашки мода.
+     */
     private static Table findRightButtonsTable(Group modButton) {
         if (modButton.getChildren().size > 0) {
             Element lastChild = modButton.getChildren().peek();
@@ -99,6 +110,15 @@ public class ConfigMenu {
         dialog.addCloseButton();
         dialog.cont.margin(20f);
         dialog.cont.add(new Label("Настройки мода находятся в разработке...")).pad(10f);
+        dialog.show();
+    }
+
+    public static void showFirstTimeHintDialog() {
+        BaseDialog dialog = new BaseDialog(bundle.get("settings-hint-title"));
+        dialog.cont.margin(24f);
+
+        dialog.cont.add(bundle.get("settings-hint-text")).width(450f).wrap().center().row();
+        dialog.buttons.button(bundle.get("text-ok"), dialog::hide).size(200f, 60f).pad(10f);
         dialog.show();
     }
 }

@@ -15,6 +15,10 @@ public class AllOfMinerals extends Mod {
     public void clientInit() {
         Log.info("Loading client part All of Minerals.");
         ConfigMenu.hookModsMenu();
+        if (Core.settings.getBool("all-of-minerals-first-time-hint", true)) {
+            ConfigMenu.showFirstTimeHintDialog();
+            Core.settings.put("all-of-minerals-first-time-hint", false);
+        }
     }
 
     public void serverAndClientInit() {
