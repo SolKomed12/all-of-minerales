@@ -1,8 +1,8 @@
-plugins{
+plugins {
     java
 }
 
-sourceSets.main{
+sourceSets.main {
     java.setSrcDirs(listOf("src"))
 }
 
@@ -16,14 +16,18 @@ val isWindows = System.getProperty("os.name").lowercase().contains("windows")
 val sdkRoot: String? = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
 val projectName = project.name
 
-repositories{
+val nameAndroidBuild = "-android"
+val nameDesktopBuild = "-desktop"
+val nameAllBuild = ""
+
+repositories {
     mavenCentral()
 
     //Downloads the dependencies JAR file from Mindustry releases; does not use any real repository. Surprisingly, this is the most reliable option.
-    ivy{
+    ivy {
         url = uri("https://github.com/")
-        patternLayout{
-            val pattern = when(mindustryVersion){
+        patternLayout {
+            val pattern = when(mindustryVersion) {
                 "latest" -> "/[organisation]/[module]/releases/[revision]/download/dependencies.jar" //latest stable release
                 "be" -> "/[organisation]/[module]/releases/download/master/[revision].jar" //latest commit (BE)
                 else -> "/[organisation]/[module]/releases/download/[revision]/dependencies.jar" //specific release
@@ -36,54 +40,49 @@ repositories{
         metadataSources{ artifact() }
 
         content{
-            if(mindustryVersion == "be"){
+            if (mindustryVersion == "be") {
                 //BE artifact version is always 'latest'
                 includeVersion("Anuken", "MindustryBuilds", "latest")
-            }else{
+            } else {
                 includeVersion("Anuken", "Mindustry", mindustryVersion)
             }
         }
     }
 }
 
-java{
+java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
 }
 
-dependencies{
+dependencies {
     compileOnly(if(mindustryVersion == "be") "Anuken:MindustryBuilds:latest" else "Anuken:Mindustry:$mindustryVersion")
 }
 
-tasks.jar{
-    archiveFileName.set("${projectName}Desktop.jar")
+tasks.jar {
+    archiveFileName.set("${projectName}$nameDesktopBuild.jar")
 
-    from(configurations.runtimeClasspath.map{ files ->
+    from(configurations.runtimeClasspath.map { files ->
         files.map{ if(it.isDirectory) it else zipTree(it) }
     })
 
-    from(projectDir){
-        include("mod.hjson")
-        include("icon.png")
-    }
-
-    from("assets/"){
+    from("assets/") {
         include("**")
     }
 }
 
-val jarAndroid = tasks.register("jarAndroid"){
+val jarAndroid = tasks.register("jarAndroid") {
     dependsOn(tasks.jar)
 
-    doLast{
+    doLast {
         val sdk = sdkRoot?.let{ File(it) }
-        if(sdk == null || !sdk.exists()){
+        if(sdk == null || !sdk.exists()) {
             throw GradleException("No valid Android SDK found. Ensure that ANDROID_HOME is set to your Android SDK directory.")
         }
 
         val platformRoot = File(sdk, "platforms").listFiles()
             ?.sortedDescending()
-            ?.firstOrNull{ File(it, "android.jar").exists() }
+            ?.firstOrNull { File(it, "android.jar").exists() }
             ?: throw GradleException("No android.jar found. Ensure that you have an Android platform installed.")
 
         //collect dependencies needed for desugaring
@@ -93,12 +92,12 @@ val jarAndroid = tasks.register("jarAndroid"){
 
         val d8 = if(isWindows) "d8.bat" else "d8"
 
-        val command = buildList{
+        val command = buildList {
             add(d8)
             classpath.forEach{ addAll(listOf("--classpath", it.path)) }
             addAll(listOf("--min-api", "21"))
-            addAll(listOf("--output", "${projectName}Android.jar"))
-            add("${projectName}Desktop.jar")
+            addAll(listOf("--output", "${projectName}$nameAndroidBuild.jar"))
+            add("${projectName}$nameDesktopBuild.jar")
         }
 
         //dex and desugar files - this requires d8 in your PATH
@@ -119,12 +118,12 @@ tasks.register<Jar>("deploy"){
     val libs = layout.buildDirectory.dir("libs")
     from(provider{
         listOf(
-            zipTree(libs.get().file("${projectName}Desktop.jar")),
-            zipTree(libs.get().file("${projectName}Android.jar"))
+            zipTree(libs.get().file("${projectName}$nameDesktopBuild.jar")),
+            zipTree(libs.get().file("${projectName}$nameAndroidBuild.jar"))
         )
     })
 
     doLast{
-        libs.get().file("${projectName}Android.jar").asFile.delete()
+        libs.get().file("${projectName}$nameAndroidBuild.jar").asFile.delete()
     }
 }
